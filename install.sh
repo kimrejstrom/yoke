@@ -1511,8 +1511,11 @@ AGENTS_MD = Path("AGENTS.md")
 SKILLS_DIR = Path(".agents/skills")
 
 
-def find_md_links(filepath: Path) -> list[tuple[int, str]]:
-    """Extract markdown links and backtick paths from a file."""
+def find_md_links(filepath: Path) -> list[tuple[int, str, str]]:
+    """Extract markdown links and backtick paths from a file.
+    
+    Returns: list of (line_number, target, link_type) tuples
+    """
     results = []
     try:
         text = filepath.read_text()
@@ -1524,17 +1527,23 @@ def find_md_links(filepath: Path) -> list[tuple[int, str]]:
         for m in re.finditer(r"\[([^\]]*)\]\(([^)]+)\)", line):
             target = m.group(2)
             if not target.startswith(("http://", "https://", "#", "mailto:")):
-                results.append((i, target))
+                results.append((i, target, "markdown"))
         # Backtick paths: `path/to/file.py`
         for m in re.finditer(r"`([^`]+\.[a-zA-Z]+)`", line):
             candidate = m.group(1)
             if "/" in candidate and not candidate.startswith(("http://", "https://")):
-                results.append((i, candidate))
+                results.append((i, candidate, "backtick"))
     return results
 
 
-def resolve_link(base: Path, target: str) -> Path:
-    """Resolve a relative link from a base file."""
+def resolve_link(base: Path, target: str, link_type: str) -> Path:
+    """Resolve a relative link from a base file.
+    
+    Markdown links are resolved relative to the file they appear in.
+    Backtick paths are resolved from the repository root.
+    """
+    if link_type == "backtick":
+        return Path(target).resolve()
     return (base.parent / target).resolve()
 
 
@@ -1551,8 +1560,8 @@ def main() -> int:
 
     for filepath in scan_files:
         links = find_md_links(filepath)
-        for line_num, target in links:
-            resolved = resolve_link(filepath, target)
+        for line_num, target, link_type in links:
+            resolved = resolve_link(filepath, target, link_type)
             if not resolved.exists():
                 violations.append(
                     f"{filepath}:{line_num}: broken-link: "
