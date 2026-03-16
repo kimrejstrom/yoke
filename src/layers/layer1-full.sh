@@ -37,7 +37,7 @@ read_config() {
     local key="$1" default="$2"
     if [ -f "$CONFIG_FILE" ]; then
         local value
-        value=$(grep -E "^\s+${key}:" "$CONFIG_FILE" 2>/dev/null | head -1 | sed '"'"'s/.*:\s*//'"'"' | tr -d '"'"'"'"'"' | tr -d "'"'"'"'"'"' || echo "")
+        value=$(grep -E "^\s+${key}:" "$CONFIG_FILE" 2>/dev/null | head -1 | sed '"'"'s/.*:[[:space:]]*//'"'"' | tr -d '"'"'"'"'"' | tr -d "'"'"'"'"'"' | sed '"'"'s/^[[:space:]]*//;s/[[:space:]]*$//'"'"' || echo "")
         [ -n "$value" ] && echo "$value" && return
     fi
     echo "$default"
@@ -237,7 +237,7 @@ for wave_idx in "${!WAVES[@]}"; do
         done
 
         agent_tool=$(echo "${ISSUE_DATA[$num]}" | jq -r '"'"'.agent_tool // "'"'"'"$DEFAULT_AGENT_TOOL"'"'"'"'"'"' 2>/dev/null || echo "$DEFAULT_AGENT_TOOL")
-        wt_dir="worktrees/issue-$num"
+        wt_dir="../worktrees/issue-$num"
 
         echo "  Launching issue #$num with $agent_tool..."
         log_event "issue_start" "{\"issue\":$num,\"agent_tool\":\"$agent_tool\"}"
@@ -249,62 +249,86 @@ for wave_idx in "${!WAVES[@]}"; do
             cd "$wt_dir" 2>/dev/null || exit 1
             case "$agent_tool" in
                 claude)
-                    claude --prompt "Run /start-issue $num" 2>/dev/null || true
+                    claude --prompt "Run /start-issue $num" || true
                     ;;
                 opencode)
                     source .agents/hooks/opencode-grind-loop.sh
-                    grind_loop "Run /start-issue $num" 2>/dev/null || true
+                    grind_loop "Run /start-issue $num" || true
                     ;;
                 *)
                     source .agents/hooks/opencode-grind-loop.sh
-                    grind_loop "Run /start-issue $num" 2>/dev/null || true
+                    grind_loop "Run /start-issue $num" || true
                     ;;
             esac
-        ) &
+        ) > "$wt_dir/agent.log" 2>&1 &
         PIDS["$num"]=$!
         active=$((active + 1))
     done
 
-    # Wait for all in wave with stall detection
+    # Wait for all in wave with stall detection and progress monitoring
     STALL_LIMIT=$((STALL_TIMEOUT * STALL_MULTIPLIER))
+    declare -A START_TIMES=()
     for num in "${!PIDS[@]}"; do
-        local_start=$(date +%s)
-        while kill -0 "${PIDS[$num]}" 2>/dev/null; do
-            sleep "$POLL_INTERVAL"
-            elapsed=$(( $(date +%s) - local_start ))
+        START_TIMES["$num"]=$(date +%s)
+    done
+
+    while [ ${#PIDS[@]} -gt 0 ]; do
+        sleep "$POLL_INTERVAL"
+
+        # Progress summary
+        echo ""
+        echo "  --- Status ($(date +%H:%M:%S)) ---"
+        for num in "${!PIDS[@]}"; do
+            local_wt="${WORKTREES[$num]}"
+            local_iters=$(tail -1 "$local_wt/.agents/session-log.jsonl" 2>/dev/null | grep -o '"'"'"iteration":[0-9]*'"'"' | head -1 | sed '"'"'s/"iteration"://'"'"' || echo "?")
+            local_failed=$(tail -1 "$local_wt/.agents/session-log.jsonl" 2>/dev/null | grep -o '"'"'"failed":\[[^]]*\]'"'"' | head -1 | sed '"'"'s/"failed"://'"'"' || echo "[]")
+            echo "    #$num: iteration=$local_iters failed=$local_failed"
+        done
+
+        # Check for completed/stalled agents
+        for num in "${!PIDS[@]}"; do
+            if ! kill -0 "${PIDS[$num]}" 2>/dev/null; then
+                wait "${PIDS[$num]}" 2>/dev/null
+                local_exit=$?
+                if [ "$local_exit" -eq 0 ]; then
+                    OUTCOMES["$num"]="success"
+                    echo "  Issue #$num completed successfully."
+                    log_event "issue_complete" "{\"issue\":$num,\"status\":\"success\"}"
+
+                    auto_merge=$(echo "${ISSUE_DATA[$num]}" | jq -r '"'"'.auto_merge // false'"'"' 2>/dev/null || echo "false")
+                    if [ "$auto_merge" = "true" ] || [ "$auto_merge" = "yes" ]; then
+                        pr_num=$(gh pr list --repo "$OWNER/$REPO" --head "feature/issue-$num-*" --json number --jq '"'"'.[0].number'"'"' 2>/dev/null || echo "")
+                        if [ -n "$pr_num" ]; then
+                            echo "  Auto-merging PR #$pr_num for issue #$num"
+                            gh pr merge "$pr_num" --repo "$OWNER/$REPO" --"$AUTO_MERGE_METHOD" 2>/dev/null || true
+                            log_event "auto_merge" "{\"issue\":$num,\"pr\":$pr_num}"
+                        fi
+                    fi
+                else
+                    OUTCOMES["$num"]="failed"
+                    echo "  Issue #$num failed (exit $local_exit)."
+                    log_event "issue_complete" "{\"issue\":$num,\"status\":\"failed\",\"exit_code\":$local_exit}"
+                fi
+                bash scripts/wtr.sh "$num" 2>/dev/null || true
+                unset "PIDS[$num]"
+                active=$((active - 1))
+                continue
+            fi
+
+            elapsed=$(( $(date +%s) - ${START_TIMES[$num]} ))
             if [ "$elapsed" -gt "$STALL_LIMIT" ]; then
                 echo "  Issue #$num stalled (${elapsed}s). Killing."
                 log_event "issue_stalled" "{\"issue\":$num,\"elapsed\":$elapsed}"
                 kill -TERM "${PIDS[$num]}" 2>/dev/null || true
                 sleep "$KILL_GRACE"
                 kill -KILL "${PIDS[$num]}" 2>/dev/null || true
-                break
+                wait "${PIDS[$num]}" 2>/dev/null || true
+                OUTCOMES["$num"]="stalled"
+                bash scripts/wtr.sh "$num" 2>/dev/null || true
+                unset "PIDS[$num]"
+                active=$((active - 1))
             fi
         done
-        wait "${PIDS[$num]}" 2>/dev/null
-        local_exit=$?
-
-        if [ "$local_exit" -eq 0 ]; then
-            OUTCOMES["$num"]="success"
-            log_event "issue_complete" "{\"issue\":$num,\"status\":\"success\"}"
-
-            # Auto-merge if eligible
-            auto_merge=$(echo "${ISSUE_DATA[$num]}" | jq -r '"'"'.auto_merge // false'"'"' 2>/dev/null || echo "false")
-            if [ "$auto_merge" = "true" ] || [ "$auto_merge" = "yes" ]; then
-                pr_num=$(gh pr list --repo "$OWNER/$REPO" --head "feature/issue-$num-*" --json number --jq '"'"'.[0].number'"'"' 2>/dev/null || echo "")
-                if [ -n "$pr_num" ]; then
-                    echo "  Auto-merging PR #$pr_num for issue #$num"
-                    gh pr merge "$pr_num" --repo "$OWNER/$REPO" --"$AUTO_MERGE_METHOD" 2>/dev/null || true
-                    log_event "auto_merge" "{\"issue\":$num,\"pr\":$pr_num}"
-                fi
-            fi
-        else
-            OUTCOMES["$num"]="failed"
-            log_event "issue_complete" "{\"issue\":$num,\"status\":\"failed\",\"exit_code\":$local_exit}"
-        fi
-
-        # Cleanup worktree
-        bash scripts/wtr.sh "$num" 2>/dev/null || true
     done
 
     # Update main between waves
@@ -603,54 +627,3 @@ _Describe the feature or task._
 
 }
 
-
-# ============================================================================
-# GITIGNORE MANAGEMENT
-# ============================================================================
-
-install_gitignore() {
-    echo ""
-    echo "=== Gitignore entries ==="
-    append_gitignore ".agents/session-log.jsonl"
-    append_gitignore ".agents/orchestrator-log.jsonl"
-    append_gitignore ".agents/orchestrator.lock"
-    append_gitignore ".agents/scratchpad.md"
-    append_gitignore "CODE_REVIEW_*.md"
-    append_gitignore "test-output.txt"
-}
-
-# ============================================================================
-# MAIN EXECUTION
-# ============================================================================
-
-echo "Yoke install.sh — profile: $PROFILE"
-echo ""
-
-# Profile containment: minimal ⊂ standard ⊂ full
-install_layer2_minimal
-
-case "$PROFILE" in
-    standard|full)
-        install_layer2_standard
-        ;;
-esac
-
-case "$PROFILE" in
-    full)
-        install_layer1_full
-        ;;
-esac
-
-install_gitignore
-
-# Make shell scripts executable
-find .agents/hooks -name "*.sh" -exec chmod +x {} \; 2>/dev/null || true
-find scripts -name "*.sh" -exec chmod +x {} \; 2>/dev/null || true
-
-echo ""
-echo "Created $CREATED files ($TEMPLATES templates with placeholders), skipped $SKIPPED existing"
-echo ""
-echo "Next steps:"
-echo "  1. The agent will detect your toolchain and fill in {{placeholders}}"
-echo "  2. The agent will generate tool-native components for your selected agent tools"
-echo "  3. The agent will analyze your codebase and generate Layer 3 content"

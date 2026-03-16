@@ -11,6 +11,7 @@ install_gitignore() {
     append_gitignore ".agents/scratchpad.md"
     append_gitignore "CODE_REVIEW_*.md"
     append_gitignore "test-output.txt"
+    append_gitignore "agent.log"
 }
 
 # ============================================================================

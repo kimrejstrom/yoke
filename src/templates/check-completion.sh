@@ -25,7 +25,7 @@ read_config() {
     local default="$2"
     if [ -f "$CONFIG_FILE" ]; then
         local value
-        value=$(grep -E "^\s+${key}:" "$CONFIG_FILE" 2>/dev/null | head -1 | sed 's/.*:\s*//' | sed "s/[\"']//g" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' || echo "")
+        value=$(grep -E "^\s+${key}:" "$CONFIG_FILE" 2>/dev/null | head -1 | sed 's/.*:[[:space:]]*//' | sed "s/[\"']//g" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' || echo "")
         if [ -n "$value" ]; then
             echo "$value"
             return
@@ -57,8 +57,8 @@ read_scratchpad() {
     if [ ! -f "$SCRATCHPAD" ]; then
         return
     fi
-    SCRATCHPAD_STATUS=$(grep -E "^## STATUS:" "$SCRATCHPAD" 2>/dev/null | sed 's/## STATUS:\s*//' || echo "")
-    SCRATCHPAD_FOCUS=$(grep -A1 "^## CURRENT_FOCUS" "$SCRATCHPAD" 2>/dev/null | tail -1 | sed 's/^\s*//' || echo "")
+    SCRATCHPAD_STATUS=$(grep -E "^## STATUS:" "$SCRATCHPAD" 2>/dev/null | sed 's/## STATUS:[[:space:]]*//' || echo "")
+    SCRATCHPAD_FOCUS=$(grep -A1 "^## CURRENT_FOCUS" "$SCRATCHPAD" 2>/dev/null | tail -1 | sed 's/^[[:space:]]*//' || echo "")
     if [ "$SCRATCHPAD_FOCUS" = "## CURRENT_FOCUS" ] || [ -z "$SCRATCHPAD_FOCUS" ]; then
         SCRATCHPAD_FOCUS=""
     fi
@@ -166,6 +166,16 @@ if [ "$CURRENT_ITERATION" -ge "$MAX_ITERATIONS" ]; then
     append_session_log "true"
     output_json "true"
     exit 0
+fi
+
+# --- Check 0: Verify work has been done ---
+
+MERGE_BASE=$(git merge-base HEAD main 2>/dev/null || echo "")
+if [ -n "$MERGE_BASE" ]; then
+    COMMITS_AHEAD=$(git rev-list --count "$MERGE_BASE..HEAD" 2>/dev/null | tr -d ' \n' || echo "0")
+    if [ "$COMMITS_AHEAD" -eq 0 ]; then
+        fail_with_prompt "No commits found beyond the merge base. Start working on the task — create a plan, write tests, and implement the solution."
+    fi
 fi
 
 # --- Check 1: Tests pass ---

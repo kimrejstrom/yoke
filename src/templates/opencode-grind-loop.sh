@@ -25,7 +25,7 @@ read_config() {
     local default="$2"
     if [ -f "$CONFIG_FILE" ]; then
         local value
-        value=$(grep -E "^\s+${key}:" "$CONFIG_FILE" 2>/dev/null | head -1 | sed 's/.*:\s*//' | sed "s/[\"']//g" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' || echo "")
+        value=$(grep -E "^\s+${key}:" "$CONFIG_FILE" 2>/dev/null | head -1 | sed 's/.*:[[:space:]]*//' | sed "s/[\"']//g" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' || echo "")
         if [ -n "$value" ]; then
             echo "$value"
             return
@@ -57,7 +57,7 @@ extract_followup() {
         echo "$json" | jq -r '.followup_prompt // empty' 2>/dev/null || echo "$json"
     else
         local prompt
-        prompt=$(echo "$json" | grep -o '"followup_prompt":\s*"[^"]*"' 2>/dev/null | sed 's/"followup_prompt":\s*"//' | sed 's/"$//' || echo "")
+        prompt=$(echo "$json" | grep -o '"followup_prompt":[[:space:]]*"[^"]*"' 2>/dev/null | sed 's/"followup_prompt":[[:space:]]*"//' | sed 's/"$//' || echo "")
         if [ -n "$prompt" ]; then
             echo -e "$prompt"
         else
@@ -85,9 +85,9 @@ grind_loop() {
 
         local agent_exit=0
         if [ "$STALL_TIMEOUT" -gt 0 ]; then
-            timeout "${STALL_TIMEOUT}s" opencode --prompt "$prompt" || agent_exit=$?
+            timeout "${STALL_TIMEOUT}s" opencode run "$prompt" || agent_exit=$?
         else
-            opencode --prompt "$prompt" || agent_exit=$?
+            opencode run "$prompt" || agent_exit=$?
         fi
 
         if [ "$agent_exit" -eq 124 ]; then

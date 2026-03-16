@@ -1030,7 +1030,7 @@ Enforcement is automatic via plugins in `.opencode/plugins/`:
 - `grind-loop.ts` — listens to `session.idle` events, runs `check-completion.sh`, re-prompts if incomplete
 - `plan-first.ts` — intercepts `tool.execute.before` on write/edit tools
 
-Fallback: `.agents/hooks/opencode-grind-loop.sh` wraps `opencode --prompt` in a bash loop.
+Fallback: `.agents/hooks/opencode-grind-loop.sh` wraps `opencode run` in a bash loop.
 
 ### Completion Criteria (shared)
 

@@ -131,7 +131,7 @@ read_config() {
     local default="$2"
     if [ -f "$CONFIG_FILE" ]; then
         local value
-        value=$(grep -E "^\s+${key}:" "$CONFIG_FILE" 2>/dev/null | head -1 | sed 's/.*:\s*//' | sed "s/[\"']//g" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' || echo "")
+        value=$(grep -E "^\s+${key}:" "$CONFIG_FILE" 2>/dev/null | head -1 | sed 's/.*:[[:space:]]*//' | sed "s/[\"']//g" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' || echo "")
         if [ -n "$value" ]; then
             echo "$value"
             return
@@ -163,8 +163,8 @@ read_scratchpad() {
     if [ ! -f "$SCRATCHPAD" ]; then
         return
     fi
-    SCRATCHPAD_STATUS=$(grep -E "^## STATUS:" "$SCRATCHPAD" 2>/dev/null | sed 's/## STATUS:\s*//' || echo "")
-    SCRATCHPAD_FOCUS=$(grep -A1 "^## CURRENT_FOCUS" "$SCRATCHPAD" 2>/dev/null | tail -1 | sed 's/^\s*//' || echo "")
+    SCRATCHPAD_STATUS=$(grep -E "^## STATUS:" "$SCRATCHPAD" 2>/dev/null | sed 's/## STATUS:[[:space:]]*//' || echo "")
+    SCRATCHPAD_FOCUS=$(grep -A1 "^## CURRENT_FOCUS" "$SCRATCHPAD" 2>/dev/null | tail -1 | sed 's/^[[:space:]]*//' || echo "")
     if [ "$SCRATCHPAD_FOCUS" = "## CURRENT_FOCUS" ] || [ -z "$SCRATCHPAD_FOCUS" ]; then
         SCRATCHPAD_FOCUS=""
     fi
@@ -272,6 +272,16 @@ if [ "$CURRENT_ITERATION" -ge "$MAX_ITERATIONS" ]; then
     append_session_log "true"
     output_json "true"
     exit 0
+fi
+
+# --- Check 0: Verify work has been done ---
+
+MERGE_BASE=$(git merge-base HEAD main 2>/dev/null || echo "")
+if [ -n "$MERGE_BASE" ]; then
+    COMMITS_AHEAD=$(git rev-list --count "$MERGE_BASE..HEAD" 2>/dev/null | tr -d ' \n' || echo "0")
+    if [ "$COMMITS_AHEAD" -eq 0 ]; then
+        fail_with_prompt "No commits found beyond the merge base. Start working on the task — create a plan, write tests, and implement the solution."
+    fi
 fi
 
 # --- Check 1: Tests pass ---
@@ -411,7 +421,7 @@ read_config() {
     local default="$2"
     if [ -f "$CONFIG_FILE" ]; then
         local value
-        value=$(grep -E "^\s+${key}:" "$CONFIG_FILE" 2>/dev/null | head -1 | sed 's/.*:\s*//' | sed "s/[\"']//g" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' || echo "")
+        value=$(grep -E "^\s+${key}:" "$CONFIG_FILE" 2>/dev/null | head -1 | sed 's/.*:[[:space:]]*//' | sed "s/[\"']//g" | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' || echo "")
         if [ -n "$value" ]; then
             echo "$value"
             return
@@ -443,7 +453,7 @@ extract_followup() {
         echo "$json" | jq -r '.followup_prompt // empty' 2>/dev/null || echo "$json"
     else
         local prompt
-        prompt=$(echo "$json" | grep -o '"followup_prompt":\s*"[^"]*"' 2>/dev/null | sed 's/"followup_prompt":\s*"//' | sed 's/"$//' || echo "")
+        prompt=$(echo "$json" | grep -o '"followup_prompt":[[:space:]]*"[^"]*"' 2>/dev/null | sed 's/"followup_prompt":[[:space:]]*"//' | sed 's/"$//' || echo "")
         if [ -n "$prompt" ]; then
             echo -e "$prompt"
         else
@@ -471,9 +481,9 @@ grind_loop() {
 
         local agent_exit=0
         if [ "$STALL_TIMEOUT" -gt 0 ]; then
-            timeout "${STALL_TIMEOUT}s" opencode --prompt "$prompt" || agent_exit=$?
+            timeout "${STALL_TIMEOUT}s" opencode run "$prompt" || agent_exit=$?
         else
-            opencode --prompt "$prompt" || agent_exit=$?
+            opencode run "$prompt" || agent_exit=$?
         fi
 
         if [ "$agent_exit" -eq 124 ]; then
