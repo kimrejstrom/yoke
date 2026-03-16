@@ -747,7 +747,7 @@ AGENTS.md is a routing file. Its job is to give agents the minimum context to st
 Fill in the remaining intelligent sections:
 
 1. Replace `{{architecture_table}}` with the component table from your codebase analysis (Step 7.2)
-2. Replace `{{skills_table}}` with a table mapping tasks to skill files (Step 7.4)
+2. Replace `{{skills_table}}` with a table mapping tasks to skill files (Step 7.4)  
 3. Add any repo-specific sections (e.g., trading safety rules, API usage patterns)
 
 ### 7.8 Enforcement Scripts
