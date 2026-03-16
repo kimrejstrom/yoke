@@ -518,7 +518,14 @@ grind_loop() {
             local followup
             followup=$(extract_followup "$check_output")
             if [ -n "$followup" ]; then
-                prompt="$followup"
+                prompt="$1
+
+━━━ ITERATION CONTEXT ━━━
+This is iteration $i of $MAX_ITERATIONS.
+
+IMPORTANT: $followup
+
+Continue working until the task is complete."
                 echo ""
                 echo "━━━ GRIND LOOP: Incomplete. Re-prompting: ━━━"
                 echo "$followup" | head -5
