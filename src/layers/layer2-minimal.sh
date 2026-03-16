@@ -247,7 +247,7 @@ append_session_log() {
 
     if [ -f "$SESSION_LOG" ]; then
         local line_count
-        line_count=$(wc -l < "$SESSION_LOG" 2>/dev/null || echo "0")
+        line_count=$(wc -l < "$SESSION_LOG" 2>/dev/null | tr -d ' ' || echo "0")
         if [ "$line_count" -gt "$SESSION_LOG_MAX" ]; then
             tail -n "$SESSION_LOG_MAX" "$SESSION_LOG" > "${SESSION_LOG}.tmp" 2>/dev/null && mv "${SESSION_LOG}.tmp" "$SESSION_LOG" 2>/dev/null || true
         fi
