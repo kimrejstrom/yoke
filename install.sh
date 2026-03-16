@@ -621,8 +621,19 @@ if [ -n "$PR_EXISTS" ] && [ -z "$REVIEW_FILES" ]; then
     done <<< "$CHANGED_FILES"
 
     if [ "$IS_TRIVIAL" = false ]; then
+        ITERATIONS_LEFT=$((MAX_ITERATIONS - CURRENT_ITERATION))
+        URGENCY=""
+        if [ "$ITERATIONS_LEFT" -le 3 ]; then
+            URGENCY="URGENT (only $ITERATIONS_LEFT iterations left): "
+        fi
         FAILED_CHECKS+=("review_exists")
-        fail_with_prompt "Tests pass and PR #$PR_EXISTS exists, but no code review has been performed yet. Run the code-reviewer subagent to review PR #$PR_EXISTS before marking as done."
+        fail_with_prompt "${URGENCY}EXECUTE THIS NOW (do not check PR status, do not wait):
+1. Use the code-reviewer subagent to review PR #$PR_EXISTS
+2. The code review will create a CODE_REVIEW_*.md file
+3. After review, fix any Critical/High findings
+4. Re-run the code reviewer to verify fixes
+
+Do this immediately. Do not skip this step."
     fi
 fi
 
