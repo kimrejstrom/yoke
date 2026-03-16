@@ -270,6 +270,20 @@ How it works:
 
 Also copy commands: `cp .agents/commands/*.md .claude/commands/` (create `.claude/commands/` directory first).
 
+For the code-reviewer agent, use `#include` to avoid duplicating the prompt. Generate `.claude/agents/code-reviewer.md` with just frontmatter + include:
+
+```markdown
+---
+name: code-reviewer
+description: Reviews PR code changes for quality, tests, and conventions.
+permissionMode: bypassPermissions
+---
+
+{{ #include ../../.agents/agents/code-reviewer/prompt.md }}
+```
+
+This keeps `.agents/agents/code-reviewer/prompt.md` as the single source of truth.
+
 ### 6.2 OpenCode
 
 If the developer selected OpenCode, generate these files:
@@ -409,6 +423,29 @@ export default PlanFirstPlugin;
 After creating these files, run `cd .opencode && npm install` (or the appropriate package manager).
 
 Also copy commands: `cp .agents/commands/*.md .opencode/commands/`
+
+For the code-reviewer agent, use `#include` to avoid duplicating the prompt. Generate `.opencode/agent/code-reviewer.md` with just frontmatter + include:
+
+```markdown
+---
+description: Reviews PR code changes for quality, tests, and conventions.
+mode: subagent
+temperature: 0.1
+tools:
+  write: true
+  edit: true
+  bash: false
+  read: true
+permissions:
+  write: allow
+  edit: allow
+  bash: deny
+---
+
+{{ #include ../../.agents/agents/code-reviewer/prompt.md }}
+```
+
+This keeps `.agents/agents/code-reviewer/prompt.md` as the single source of truth. If a tool doesn't support `#include`, the raw text still serves as a pointer to the canonical file.
 
 ### 6.3 Codex (OpenAI)
 
