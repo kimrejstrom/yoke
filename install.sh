@@ -296,7 +296,7 @@ install_layer2_minimal() {
 # Keep this flat and simple — shell scripts parse it with grep/awk.
 
 grind_loop:
-  max_iterations: 5
+  max_iterations: 10
   # Stall timeout: agent alive but no progress (e.g., stuck LLM call)
   stall_timeout_seconds: 300
   # Idle timeout: agent stopped working but did not finish
@@ -322,7 +322,7 @@ orchestrator:
     # --- Static: .agents/scratchpad.md ---
     write_file ".agents/scratchpad.md" '## STATUS: IDLE
 
-## ITERATION: 0/5
+## ITERATION: 0/10
 
 ## STARTED_AT:
 
@@ -720,8 +720,7 @@ read_config() {
     echo "$default"
 }
 
-MAX_ITERATIONS="${MAX_GRIND_ITERATIONS:-$(read_config max_iterations 5)}"
-STALL_TIMEOUT=$(read_config stall_timeout_seconds 300)
+MAX_ITERATIONS="${MAX_GRIND_ITERATIONS:-$(read_config max_iterations 10)}"
 
 check_plan_exists() {
     local plan_files
@@ -761,7 +760,6 @@ grind_loop() {
 
     echo "━━━ GRIND LOOP CONFIG ━━━"
     echo "  Max iterations: $MAX_ITERATIONS"
-    echo "  Stall timeout:  ${STALL_TIMEOUT}s"
     echo "  Config file:    $CONFIG_FILE"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━"
 
@@ -770,17 +768,11 @@ grind_loop() {
         echo "━━━ GRIND LOOP: Iteration $i/$MAX_ITERATIONS ━━━"
 
         local agent_exit=0
-        if [ "$STALL_TIMEOUT" -gt 0 ]; then
-            timeout "${STALL_TIMEOUT}s" opencode run "$prompt" || agent_exit=$?
-        else
-            opencode run "$prompt" || agent_exit=$?
-        fi
+        opencode run "$prompt" || agent_exit=$?
 
-        if [ "$agent_exit" -eq 124 ]; then
-            echo "━━━ GRIND LOOP: Agent stalled (no output for ${STALL_TIMEOUT}s). Re-prompting. ━━━"
-            prompt="You appear to be stuck — the session timed out after ${STALL_TIMEOUT} seconds of inactivity. Check your current approach and try a different angle."
-            continue
-        fi
+        # Auto-commit so next iteration sees progress via git
+        git add -A 2>/dev/null || true
+        git diff --cached --quiet 2>/dev/null || git commit -m "wip: grind loop iteration $i" 2>/dev/null || true
 
         export GRIND_ITERATION="$i"
         local check_output=""
