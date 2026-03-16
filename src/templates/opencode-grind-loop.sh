@@ -72,6 +72,23 @@ grind_loop() {
         return 1
     fi
 
+    # Ensure headless permissions for opencode
+    mkdir -p .opencode
+    cat > .opencode/config.json <<EOFCONFIG
+{
+  "permissions": {
+    "external_directory": "allow",
+    "bash": "allow",
+    "read": "allow",
+    "write": "allow",
+    "edit": "allow"
+  },
+  "bash": {
+    "timeout": 300000
+  }
+}
+EOFCONFIG
+
     echo "━━━ GRIND LOOP CONFIG ━━━"
     echo "  Max iterations: $MAX_ITERATIONS"
     echo "  Config file:    $CONFIG_FILE"

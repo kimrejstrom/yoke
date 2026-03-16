@@ -298,7 +298,7 @@ install_layer2_minimal() {
 grind_loop:
   max_iterations: 10
   # Stall timeout: agent alive but no progress (e.g., stuck LLM call)
-  stall_timeout_seconds: 300
+  stall_timeout_seconds: 2400
   # Idle timeout: agent stopped working but did not finish
   idle_timeout_seconds: 120
   # Session log for post-hoc observability
@@ -311,7 +311,7 @@ scratchpad:
 
 orchestrator:
   max_parallel: 3
-  poll_interval_seconds: 60
+  poll_interval_seconds: 30
   stall_detection_multiplier: 2
   log: .agents/orchestrator-log.jsonl
   auto_merge_method: squash
@@ -757,6 +757,23 @@ grind_loop() {
         echo "Usage: grind_loop 'your prompt here'"
         return 1
     fi
+
+    # Ensure headless permissions for opencode
+    mkdir -p .opencode
+    cat > .opencode/config.json <<EOFCONFIG
+{
+  "permissions": {
+    "external_directory": "allow",
+    "bash": "allow",
+    "read": "allow",
+    "write": "allow",
+    "edit": "allow"
+  },
+  "bash": {
+    "timeout": 300000
+  }
+}
+EOFCONFIG
 
     echo "━━━ GRIND LOOP CONFIG ━━━"
     echo "  Max iterations: $MAX_ITERATIONS"
