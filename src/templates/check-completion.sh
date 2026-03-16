@@ -207,10 +207,11 @@ REVIEW_FILES=$(find . -maxdepth 1 -name "CODE_REVIEW_*.md" 2>/dev/null || echo "
 if [ -n "$REVIEW_FILES" ]; then
     CHECKS_REVIEW_EXISTS=true
     for review_file in $REVIEW_FILES; do
-        if grep -qiE "^##.*critical|^##.*high|\*\*severity\*\*:.*critical|\*\*severity\*\*:.*high|\*\*Priority\*\*:.*Critical|\*\*Priority\*\*:.*High" "$review_file" 2>/dev/null; then
+        UNRESOLVED=$(grep -iE "^##.*critical|^##.*high|\*\*severity\*\*:.*critical|\*\*severity\*\*:.*high|\*\*Priority\*\*:.*Critical|\*\*Priority\*\*:.*High" "$review_file" 2>/dev/null | grep -viE "✅|FIXED|Resolved|was ◆" || true)
+        if [ -n "$UNRESOLVED" ]; then
             CHECKS_REVIEW_CLEAN=false
             FAILED_CHECKS+=("review_clean")
-            FINDINGS=$(grep -iE "critical|high" "$review_file" | head -5)
+            FINDINGS=$(echo "$UNRESOLVED" | head -5)
 
             local_prompt="CODE_REVIEW has unresolved Critical/High findings in $review_file:"
             local_prompt+="\n\n${FINDINGS}"
